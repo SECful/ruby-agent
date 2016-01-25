@@ -7,36 +7,71 @@ module Rack
     VERSION = '1.0.0'
 
     def initialize(app, socket_path)
-      @app, @socket_path = app, socket_path
+      @app, @socket_path, @verify_mode = app, socket_path, verify_mode
       begin
         @machine_ip = Socket.ip_address_list.detect(&:ipv4_private?).try(:ip_address)
-      rescue
+        @queue = SizedQueue.new(10)
+        @threads_to_sockets = {}
+        check_thread_pool()
       rescue Exception
       end
-      Thread.new { connect_to_ws() }
     end
 
     def call(env)
       begin
-        Thread.new { connect_to_ws() }
+        check_thread_pool()
         dup._call(env)
-      rescue
       rescue Exception
+        @app.call(env)
       end
-    end
-
-    def _call(env)
-      status, headers, body = @app.call(env)
-      Thread.new{ handle_request(env) }
-      Thread.new{ handle_response(status, headers, body)}
-      return [status, headers, body]
     end
 
     protected
 
-    def connect_to_ws
-      if !@ws or !@ws.open?
-        @ws = WebSocket::Client::Simple.connect @socket_path
+    def _call(env)
+      status, headers, body = @app.call(env)
+      if @queue.length < @queue.max
+        @queue << env
+      end
+      #handle_response(status, headers, body)
+      return [status, headers, body]
+    end
+
+    def check_thread_pool
+      if not @threads_to_sockets.keys.map {|thr| thr.status}.any?
+        close_sockets()
+        @threads_to_sockets = {}
+        activate_workers()
+      end
+    end
+
+    def activate_workers
+      3.times do
+        connect_to_ws(Thread.new { worker() })
+      end
+    end
+
+    def worker
+      loop do
+        env = @queue.pop
+        if env
+          connect_to_ws(Thread.current)
+          handle_request(env)
+        end rescue nil
+      end
+    end
+
+    def connect_to_ws(thr)
+      if !@threads_to_sockets[thr] or !@threads_to_sockets[thr].open?
+        @threads_to_sockets[thr] = WebSocket::Client::Simple.connect @socket_path, verify_mode: @verify_mode
+      end
+    end
+
+    def close_sockets
+      @threads_to_sockets.values.each do |ws|
+        begin
+          ws.close()
+        end rescue nil
       end
     end
 
@@ -44,8 +79,8 @@ module Rack
       request_hash = {}
       if env['rack.url_scheme'] == 'http'
         write_env(request_hash, env)
-        @ws.send request_hash.to_json
-      end
+        @threads_to_sockets[Thread.current].send request_hash.to_json
+      end rescue nil
     end
 
     def handle_response(status, headers, body)
@@ -53,8 +88,8 @@ module Rack
 
     def write_env(request_hash, env)
       write_request_line request_hash, env
-      write_headers      request_hash, env
-      write_post_body    request_hash, env
+      write_headers request_hash, env
+      write_post_body request_hash, env
     end
 
     def write_request_line(request_hash, env)
@@ -82,7 +117,7 @@ module Rack
 
     def write_post_body(request_hash, env)
       if env['CONTENT_LENGTH'] && (content_length = env['CONTENT_LENGTH'].to_i) > 0
-        request_hash[:htp][:payload] = env['rack.input'].read
+        request_hash[:http][:payload] = env['rack.input'].read
         env['rack.input'].rewind
       end
     end
