@@ -1,12 +1,13 @@
 require 'json'
 require 'socket'
-require 'websocket-client-simple'
+
+require_relative './websocket-client-simple'
 
 module Rack
   class SocketDuplex
     VERSION = '1.0.0'
 
-    def initialize(app, socket_path)
+    def initialize(app, socket_path, verify_mode=OpenSSL::SSL::VERIFY_PEER)
       @app, @socket_path, @verify_mode = app, socket_path, verify_mode
       begin
         @machine_ip = Socket.ip_address_list.detect(&:ipv4_private?).try(:ip_address)
