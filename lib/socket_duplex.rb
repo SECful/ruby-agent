@@ -64,7 +64,11 @@ module Rack
 
     def connect_to_ws(thr)
       if !@threads_to_sockets[thr] or !@threads_to_sockets[thr].open?
-        @threads_to_sockets[thr] = WebSocket::Client::Simple.connect @socket_path, verify_mode: @verify_mode
+        begin
+          @threads_to_sockets[thr] = WebSocket::Client::Simple.connect @socket_path, verify_mode: @verify_mode
+        rescue Exception
+          @threads_to_sockets[thr] = nil
+        end
       end
     end
 
