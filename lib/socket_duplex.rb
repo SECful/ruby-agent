@@ -6,12 +6,14 @@ require_relative './websocket-client-simple'
 module Rack
   class SocketDuplex
     VERSION = '1.0.0'
+    MAX_QUEUE_SIZE = 50
+    NUM_OF_THREADS = 5
 
     def initialize(app, socket_path, verify_mode=OpenSSL::SSL::VERIFY_PEER)
       @app, @socket_path, @verify_mode = app, socket_path, verify_mode
       begin
         @machine_ip = Socket.ip_address_list.detect(&:ipv4_private?).try(:ip_address)
-        @queue = SizedQueue.new(10)
+        @queue = SizedQueue.new(MAX_QUEUE_SIZE)
         @threads_to_sockets = {}
         check_thread_pool()
       rescue Exception
@@ -42,13 +44,13 @@ module Rack
       if not @threads_to_sockets.keys.map {|thr| thr.status}.any?
         close_sockets()
         @threads_to_sockets = {}
-        activate_workers()
+        Thread.new {activate_workers()}
       end
     end
 
     def activate_workers
-      3.times do
-        connect_to_ws(Thread.new { worker() })
+      NUM_OF_THREADS.times do
+        connect_to_ws(Thread.new {worker()})
       end
     end
 
@@ -63,13 +65,22 @@ module Rack
     end
 
     def connect_to_ws(thr)
-      if !@threads_to_sockets[thr] or !@threads_to_sockets[thr].open?
-        begin
-          @threads_to_sockets[thr] = WebSocket::Client::Simple.connect @socket_path, verify_mode: @verify_mode
-        rescue Exception
-          @threads_to_sockets[thr] = nil
+      begin
+        ws = @threads_to_sockets[thr]
+        if !ws
+          ws = WebSocket::Client::Simple.connect @socket_path, verify_mode: @verify_mode
+          sleep(3)
         end
+        if !ws.open?
+          sleep(60)
+        end
+        if !ws.open?
+          ws.close()
+          ws = nil
+        end
+      rescue nil
       end
+      @threads_to_sockets[thr] = ws
     end
 
     def close_sockets
