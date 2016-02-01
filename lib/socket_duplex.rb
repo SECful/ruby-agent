@@ -15,14 +15,13 @@ module Rack
         @machine_ip = Socket.ip_address_list.detect(&:ipv4_private?).try(:ip_address)
         @queue = SizedQueue.new(MAX_QUEUE_SIZE)
         @threads_to_sockets = {}
-        check_thread_pool()
+        Thread.new { activate_workers() }
       rescue Exception
       end
     end
 
     def call(env)
       begin
-        check_thread_pool()
         dup._call(env)
       rescue Exception
         @app.call(env)
@@ -40,17 +39,9 @@ module Rack
       return [status, headers, body]
     end
 
-    def check_thread_pool
-      if not @threads_to_sockets.keys.map {|thr| thr.status}.any?
-        close_sockets()
-        @threads_to_sockets = {}
-        Thread.new {activate_workers()}
-      end
-    end
-
     def activate_workers
       NUM_OF_THREADS.times do
-        connect_to_ws(Thread.new {worker()})
+        Thread.new {worker()}
       end
     end
 
@@ -95,7 +86,15 @@ module Rack
       request_hash = {}
       if env['rack.url_scheme'] == 'http'
         write_env(request_hash, env)
-        @threads_to_sockets[Thread.current].send request_hash.to_json
+        ws = @threads_to_sockets[Thread.current]
+        begin
+          ws.send request_hash.to_json
+        rescue Exception
+          if ws
+            ws.close()
+          end rescue nil
+          @threads_to_sockets[Thread.current] = nil
+        end
       end rescue nil
     end
 
