@@ -1,16 +1,15 @@
 # ruby-agent
-Catch traffic on ruby middleware and send it out in different threads.
+Secure Ruby on Rails with SECful.
 
 Installation
 ------------
-    build socket_duplex gem
-    "gem build socket_duplex.gemspec"
+    1. Add the following to your Gemfile:
+       gem 'socket_duplex', :git => 'git@github.com:SECful/ruby-agent.git'
 
-    install socket_duplex gem
-    "gem install socket_duplex-1.1.gem"
+    2. Add the following to your config.ru:
+       require 'socket_duplex'
+       use Rack::SocketDuplex, 'wss://localhost:7000', 'token'
 
-    add "gem 'socket_duplex'" to your Gemfile
+       For a non SSL websocket use:
+       use Rack::SocketDuplex, 'ws://localhost:7000', 'token', OpenSSL::SSL::VERIFY_NONE
 
-    add "use Rack::SocketDuplex, 'ws://localhost:8000', OpenSSL::SSL::VERIFY_NONE"
-    ('wss://localhost:7000', OpenSSL::SSL::VERIFY_PEER) for SSL
-    to your config.ru

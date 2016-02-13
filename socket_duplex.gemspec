@@ -1,10 +1,9 @@
 lib = File.expand_path('../lib', __FILE__)
 $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
-require 'socket_duplex'
 
 Gem::Specification.new do |spec|
   spec.name          = "socket_duplex"
-  spec.version       = Rack::SocketDuplex::VERSION
+  spec.version       = '1.0.0'
   spec.authors       = ["Secful"]
   spec.description   = %q{Rack middleware that duplexes HTTP traffic}
   spec.summary       = spec.description
@@ -20,6 +19,6 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency "websocket-eventmachine-server"
   spec.add_development_dependency "eventmachine"
 
-  spec.add_dependency "websocket"
-  spec.add_dependency "event_emitter"
+  spec.add_runtime_dependency "websocket"
+  spec.add_runtime_dependency "event_emitter"
 end
