@@ -12,6 +12,7 @@ module Rack
     def initialize(app, socket_path, secful_key, verify_mode=OpenSSL::SSL::VERIFY_PEER)
       @app, @socket_path, @verify_mode = app, socket_path, verify_mode
       begin
+        puts 'initialize'
         @secful_key = secful_key
         @agent_identifier = SecureRandom.hex
         @machine_ip = Socket.ip_address_list.detect(&:ipv4_private?).try(:ip_address)
@@ -58,14 +59,17 @@ module Rack
 
     def connect_to_ws(thr)
       begin
+        puts 'connect_to_ws'
         ws = @threads_to_sockets[thr]
         if !ws
+          puts 'creating ws'
           headers = { 'Agent-Type' => 'Ruby',
                       'Agent-Version' => '1.0',
                       'Agent-Identifier' => @agent_identifier,
                       'Authorization' => 'Bearer ' + @secful_key }
           ws = WebSocket::Client::Simple.connect @socket_path, verify_mode: @verify_mode, headers: headers
           sleep(3)
+          puts 'connected to ws'
         end
         if !ws.open?
           sleep(60)
@@ -82,11 +86,15 @@ module Rack
     def handle_request(env)
       request_hash = {}
       if env['rack.url_scheme'] == 'http'
+        puts 'writing env'
         write_env(request_hash, env)
         ws = @threads_to_sockets[Thread.current]
         begin
+          puts 'sending'
           ws.send request_hash.to_json
+          puts 'sent'
         rescue Exception
+          puts 'error on sending'
           if ws
             ws.close()
           end rescue nil
