@@ -12,21 +12,32 @@ module Rack
     def initialize(app, socket_path, secful_key, verify_mode=OpenSSL::SSL::VERIFY_PEER)
       @app, @socket_path, @verify_mode = app, socket_path, verify_mode
       begin
-        puts 'initialize'
+        puts 'secful: initialize'
         @secful_key = secful_key
+        puts 'secful: secful_key'
         @agent_identifier = SecureRandom.hex
+        puts 'secful: agent_identifier'
         @machine_ip = Socket.ip_address_list.detect(&:ipv4_private?).try(:ip_address)
+        puts 'secful: machine_ip'
         @queue = SizedQueue.new(MAX_QUEUE_SIZE)
+        puts 'secful: queue'
         @threads_to_sockets = {}
+        puts 'secful: threads_to_sockets'
         Thread.new { activate_workers() }
-      rescue Exception
+        puts 'secful: activate_workers()'
+      rescue Exception => e  
+        puts 'secful: init-exception: ' + e.message  
+        puts 'secful: init-trace: ' + e.backtrace.inspect
       end
     end
 
     def call(env)
       begin
+        puts 'secful: call'
         dup._call(env)
-      rescue Exception
+      rescue Exception => e
+        puts 'secful: call-exception: ' + e.message  
+        puts 'secful: call-trace: ' + e.backtrace.inspect
         @app.call(env)
       end
     end
@@ -34,23 +45,33 @@ module Rack
     protected
 
     def _call(env)
+      puts 'secful: _call'
       status, headers, body = @app.call(env)
+      puts 'secful: app.call'
+      puts 'secful: queue.len = ' + @queue.length.to_s
       if @queue.length < @queue.max
+        puts 'secful: put in queue'
         @queue << env
       end
       return [status, headers, body]
     end
 
     def activate_workers
+      puts 'secful: activate_workers'
       NUM_OF_THREADS.times do
+        puts 'secful: new thread'
         Thread.new {worker()}
+        puts 'secful: thread started'
       end
     end
 
     def worker
       loop do
+        puts 'secful: worker start'
         env = @queue.pop
+        puts 'secful: workers poped'
         if env
+          puts 'secful: env'
           connect_to_ws(Thread.current)
           handle_request(env)
         end rescue nil
@@ -59,17 +80,17 @@ module Rack
 
     def connect_to_ws(thr)
       begin
-        puts 'connect_to_ws'
+        puts 'secful: connect_to_ws'
         ws = @threads_to_sockets[thr]
         if !ws
-          puts 'creating ws'
+          puts 'secful: creating ws'
           headers = { 'Agent-Type' => 'Ruby',
                       'Agent-Version' => '1.0',
                       'Agent-Identifier' => @agent_identifier,
                       'Authorization' => 'Bearer ' + @secful_key }
           ws = WebSocket::Client::Simple.connect @socket_path, verify_mode: @verify_mode, headers: headers
           sleep(3)
-          puts 'connected to ws'
+          puts 'secful: connected to ws'
         end
         if !ws.open?
           sleep(60)
@@ -86,15 +107,16 @@ module Rack
     def handle_request(env)
       request_hash = {}
       if env['rack.url_scheme'] == 'http'
-        puts 'writing env'
+        puts 'secful: writing env'
         write_env(request_hash, env)
         ws = @threads_to_sockets[Thread.current]
         begin
-          puts 'sending'
+          puts 'secful: sending'
           ws.send request_hash.to_json
-          puts 'sent'
-        rescue Exception
-          puts 'error on sending'
+          puts 'secful: sent'
+        rescue Exception => e
+          puts 'secful: handle_request-exception: ' + e.message  
+          puts 'secful: handle_request-trace: ' + e.backtrace.inspect
           if ws
             ws.close()
           end rescue nil
