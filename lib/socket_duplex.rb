@@ -26,7 +26,7 @@ module Rack
         Thread.new { activate_workers() }
         puts 'secful: activate_workers()'
       rescue Exception => e  
-        puts 'secful: init-exception: ' + e.message  
+        puts 'secful: init-exception: ' + e.message
         puts 'secful: init-trace: ' + e.backtrace.inspect
       end
     end
@@ -36,7 +36,7 @@ module Rack
         puts 'secful: call'
         dup._call(env)
       rescue Exception => e
-        puts 'secful: call-exception: ' + e.message  
+        puts 'secful: call-exception: ' + e.message
         puts 'secful: call-trace: ' + e.backtrace.inspect
         @app.call(env)
       end
@@ -50,8 +50,9 @@ module Rack
       puts 'secful: app.call'
       puts 'secful: queue.len = ' + @queue.length.to_s
       if @queue.length < @queue.max
-        puts 'secful: put in queue'
+        puts 'secful: about to put in queue'
         @queue << env
+        puts 'secful: put in queue'
       end
       return [status, headers, body]
     end
@@ -67,14 +68,20 @@ module Rack
 
     def worker
       loop do
-        puts 'secful: worker start'
-        env = @queue.pop
-        puts 'secful: workers poped'
-        if env
-          puts 'secful: env'
-          connect_to_ws(Thread.current)
-          handle_request(env)
-        end rescue nil
+        begin
+          puts 'secful: worker start'
+          env = @queue.pop
+          puts 'secful: worker poped'
+          if env
+            puts 'secful: env'
+            connect_to_ws(Thread.current)
+            handle_request(env)
+            puts 'scful: worker done'
+          end
+        rescue Exception => e
+          puts 'secful: worker-exception: ' + e.message
+          puts 'secful: worker-trace: ' + e.backtrace.inspect
+        end
       end
     end
 
