@@ -3,11 +3,13 @@ require 'socket'
 require 'securerandom'
 
 require_relative 'websocket-client-simple'
+require 'utils'
 
 module Rack
   class SocketDuplex
     MAX_QUEUE_SIZE = 50
     NUM_OF_THREADS = 5
+    @@queue = Utils::QueueWithTimeout.new
 
     def initialize(app, socket_path, secful_key, verify_mode=OpenSSL::SSL::VERIFY_PEER)
       @app, @socket_path, @verify_mode = app, socket_path, verify_mode
@@ -19,8 +21,8 @@ module Rack
         puts 'secful: agent_identifier'
         @machine_ip = Socket.ip_address_list.detect(&:ipv4_private?).try(:ip_address)
         puts 'secful: machine_ip'
-        @queue = SizedQueue.new(MAX_QUEUE_SIZE)
-        puts 'secful: queue'
+        #@queue = SizedQueue.new(MAX_QUEUE_SIZE)
+        #puts 'secful: queue init ' + @queue.__id__.to_s
         @threads_to_sockets = {}
         puts 'secful: threads_to_sockets'
         Thread.new { activate_workers() }
@@ -48,10 +50,10 @@ module Rack
       puts 'secful: _call'
       status, headers, body = @app.call(env)
       puts 'secful: app.call'
-      puts 'secful: queue.len = ' + @queue.length.to_s
-      if @queue.length < @queue.max
+      puts 'secful: queue.len = ' + @@queue.length.to_s
+      if @@queue.length < MAX_QUEUE_SIZE
         puts 'secful: about to put in queue'
-        @queue << env
+        @@queue << env
         puts 'secful: put in queue'
       end
       return [status, headers, body]
@@ -69,9 +71,13 @@ module Rack
     def worker
       loop do
         begin
-          puts 'secful: worker start'
-          env = @queue.pop
-          puts 'secful: worker poped'
+          #puts 'secful: worker start: ' + @@queue.__id__.to_s
+          begin
+            env = @@queue.pop_with_timeout(1)
+          rescue => e
+            #puts 'secful: queue-pop-exception: ' + e.message
+          end
+          #puts 'secful: worker poped'
           if env
             puts 'secful: env'
             connect_to_ws(Thread.current)
