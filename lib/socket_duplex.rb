@@ -59,7 +59,10 @@ module Rack
         begin
           env = @queue.pop
           if env
+            Rails.logger.info "Process id: " + Process.pid.to_s
+            Rails.logger.info "Connecting"
             connect_to_ws(Thread.current)
+            Rails.logger.info "Sending"
             handle_request(env)
           end
         rescue nil
@@ -92,20 +95,21 @@ module Rack
 
     def handle_request(env)
       request_hash = {}
-      if env['rack.url_scheme'] == 'http'
-        write_env(request_hash, env)
-        ws = @threads_to_sockets[Thread.current]
-        begin
-          ws.send request_hash.to_json
-          Rails.logger.info "Process id: " + Process.pid.to_s
-          Rails.logger.info "Sent"
-        rescue Exception => e
-          if ws
-            ws.close()
-          end rescue nil
-          @threads_to_sockets[Thread.current] = nil
-        end
-      end rescue nil
+      write_env(request_hash, env)
+      Rails.logger.info "Done Writing env"
+      ws = @threads_to_sockets[Thread.current]
+      Rails.logger.info "WS id: " + ws.__id__.to_s
+      begin
+        ws.send request_hash.to_json
+        Rails.logger.info "Process id: " + Process.pid.to_s
+        Rails.logger.info "Sent"
+      rescue Exception => e
+        Rails.logger.info "Error sending"
+        if ws
+          ws.close()
+        end rescue nil
+        @threads_to_sockets[Thread.current] = nil
+      end
     end
 
     def write_env(request_hash, env)
