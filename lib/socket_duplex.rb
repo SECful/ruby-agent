@@ -15,19 +15,15 @@ module Rack
         @secful_key = secful_key
         @agent_identifier = SecureRandom.hex
         @machine_ip = Socket.ip_address_list.detect(&:ipv4_private?).try(:ip_address)
-        #@queue = SizedQueue.new(MAX_QUEUE_SIZE)
         @threads_to_sockets = {}
-        #Thread.new { activate_workers() }
+        @worker_mutex = Mutex.new
       rescue nil  
       end
     end
 
     def call(env)
       begin
-        if !defined? @queue
-          @queue = SizedQueue.new(MAX_QUEUE_SIZE)
-          activate_workers()
-        end
+        ensure_workers_running
         dup._call(env)
       rescue nil
         @app.call(env)
@@ -35,6 +31,15 @@ module Rack
     end
 
     protected
+
+    def ensure_workers_running
+      return if defined? @queue
+      @worker_mutex.synchronize do
+        return if defined? @queue
+        @queue = SizedQueue.new(MAX_QUEUE_SIZE)
+        activate_workers()
+      end
+    end 
 
     def _call(env)
       status, headers, body = @app.call(env)
