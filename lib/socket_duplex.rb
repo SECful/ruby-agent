@@ -18,8 +18,6 @@ module Rack
         #@queue = SizedQueue.new(MAX_QUEUE_SIZE)
         @threads_to_sockets = {}
         #Thread.new { activate_workers() }
-        Rails.logger.info "Process id: " + Process.pid.to_s
-        Rails.logger.info "Init"
       rescue nil  
       end
     end
@@ -29,8 +27,6 @@ module Rack
         if !defined? @queue
           @queue = SizedQueue.new(MAX_QUEUE_SIZE)
           activate_workers()
-          Rails.logger.info "Process id: " + Process.pid.to_s
-          Rails.logger.info "Init queue"
         end
         dup._call(env)
       rescue nil
@@ -59,10 +55,7 @@ module Rack
         begin
           env = @queue.pop
           if env
-            Rails.logger.info "Process id: " + Process.pid.to_s
-            Rails.logger.info "Connecting"
             connect_to_ws(Thread.current)
-            Rails.logger.info "Sending"
             handle_request(env)
           end
         rescue nil
@@ -96,15 +89,10 @@ module Rack
     def handle_request(env)
       request_hash = {}
       write_env(request_hash, env)
-      Rails.logger.info "Done Writing env"
       ws = @threads_to_sockets[Thread.current]
-      Rails.logger.info "WS id: " + ws.__id__.to_s
       begin
         ws.send request_hash.to_json
-        Rails.logger.info "Process id: " + Process.pid.to_s
-        Rails.logger.info "Sent"
       rescue Exception => e
-        Rails.logger.info "Error sending"
         if ws
           ws.close()
         end rescue nil

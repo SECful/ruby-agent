@@ -3,7 +3,7 @@ $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
 
 Gem::Specification.new do |spec|
   spec.name          = "socket_duplex"
-  spec.version       = '1.1.7'
+  spec.version       = '1.1.12'
   spec.authors       = ["Secful"]
   spec.description   = %q{Rack middleware that duplexes HTTP traffic}
   spec.summary       = spec.description
