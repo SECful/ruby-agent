@@ -12,32 +12,28 @@ module Rack
     def initialize(app, socket_path, secful_key, verify_mode=OpenSSL::SSL::VERIFY_PEER)
       @app, @socket_path, @verify_mode = app, socket_path, verify_mode
       begin
-        puts 'secful: initialize'
         @secful_key = secful_key
-        puts 'secful: secful_key'
         @agent_identifier = SecureRandom.hex
-        puts 'secful: agent_identifier'
         @machine_ip = Socket.ip_address_list.detect(&:ipv4_private?).try(:ip_address)
-        puts 'secful: machine_ip'
-        @queue = SizedQueue.new(MAX_QUEUE_SIZE)
-        puts 'secful: queue init ' + @queue.__id__.to_s
+        #@queue = SizedQueue.new(MAX_QUEUE_SIZE)
         @threads_to_sockets = {}
-        puts 'secful: threads_to_sockets'
-        Thread.new { activate_workers() }
-        puts 'secful: activate_workers()'
-      rescue Exception => e  
-        puts 'secful: init-exception: ' + e.message
-        puts 'secful: init-trace: ' + e.backtrace.inspect
+        #Thread.new { activate_workers() }
+        Rails.logger.info "Process id: " + Process.pid.to_s
+        Rails.logger.info "Init"
+      rescue nil  
       end
     end
 
     def call(env)
       begin
-        puts 'secful: call'
+        if !defined? @queue
+          @queue = SizedQueue.new(MAX_QUEUE_SIZE)
+          activate_workers()
+          Rails.logger.info "Process id: " + Process.pid.to_s
+          Rails.logger.info "Init queue"
+        end
         dup._call(env)
-      rescue Exception => e
-        puts 'secful: call-exception: ' + e.message
-        puts 'secful: call-trace: ' + e.backtrace.inspect
+      rescue nil
         @app.call(env)
       end
     end
@@ -45,59 +41,42 @@ module Rack
     protected
 
     def _call(env)
-      puts 'secful: _call'
       status, headers, body = @app.call(env)
-      puts 'secful: app.call'
-      puts 'secful: queue.len = ' + @queue.length.to_s + ' id: ' + @queue.__id__.to_s
-      if @queue.length < MAX_QUEUE_SIZE
-        puts 'secful: about to put in queue'
+      if @queue.length < MAX_QUEUE_SIZE - 5
         @queue << env
-        puts 'secful: put in queue'
       end
       return [status, headers, body]
     end
 
     def activate_workers
-      puts 'secful: activate_workers'
       NUM_OF_THREADS.times do
-        puts 'secful: new thread'
         thr = Thread.new {worker()}
-        puts 'secful: thread started ' + thr.__id__.to_s
       end
     end
 
     def worker
       loop do
         begin
-          puts 'secful: worker start: ' + Thread.current.__id__.to_s + 'queue: ' + @queue.__id__.to_s
           env = @queue.pop
-          puts 'secful: worker poped'
           if env
-            puts 'secful: env'
             connect_to_ws(Thread.current)
             handle_request(env)
-            puts 'scful: worker done'
           end
-        rescue Exception => e
-          puts 'secful: worker-exception: ' + e.message
-          puts 'secful: worker-trace: ' + e.backtrace.inspect
+        rescue nil
         end
       end
     end
 
     def connect_to_ws(thr)
       begin
-        puts 'secful: connect_to_ws'
         ws = @threads_to_sockets[thr]
         if !ws
-          puts 'secful: creating ws'
           headers = { 'Agent-Type' => 'Ruby',
                       'Agent-Version' => '1.0',
                       'Agent-Identifier' => @agent_identifier,
                       'Authorization' => 'Bearer ' + @secful_key }
           ws = WebSocket::Client::Simple.connect @socket_path, verify_mode: @verify_mode, headers: headers
           sleep(3)
-          puts 'secful: connected to ws'
         end
         if !ws.open?
           sleep(60)
@@ -114,16 +93,13 @@ module Rack
     def handle_request(env)
       request_hash = {}
       if env['rack.url_scheme'] == 'http'
-        puts 'secful: writing env'
         write_env(request_hash, env)
         ws = @threads_to_sockets[Thread.current]
         begin
-          puts 'secful: sending'
           ws.send request_hash.to_json
-          puts 'secful: sent'
+          Rails.logger.info "Process id: " + Process.pid.to_s
+          Rails.logger.info "Sent"
         rescue Exception => e
-          puts 'secful: handle_request-exception: ' + e.message  
-          puts 'secful: handle_request-trace: ' + e.backtrace.inspect
           if ws
             ws.close()
           end rescue nil
